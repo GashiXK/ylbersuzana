@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 
-// Burimi kryesor: skedar audio lokal (preload + luaj menjëherë). Vendosni file në public/audio/background.mp3
-const AUDIO_SRC = "/audio/background.mp3";
+// Skedari audio: public/audio/backround.mp3 – fillon nga 2:25 kur klikohet
+const AUDIO_SRC = "/audio/backround.mp3";
 const START_TIME_SECONDS = 2 * 60 + 25; // 2:25
 
 const VIDEO_ID = "BKMtuRY2plQ";
