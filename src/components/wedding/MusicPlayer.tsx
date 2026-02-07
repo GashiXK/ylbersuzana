@@ -39,11 +39,12 @@ type PlaybackSource = "audio" | "youtube" | null;
 
 const MusicPlayer = () => {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [audioReady, setAudioReady] = useState(false);
   const sourceRef = useRef<PlaybackSource>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const ytInitDoneRef = useRef(false);
+  const playAttemptedRef = useRef(false);
+  const lastTouchTimeRef = useRef(0);
 
   // HTML5 Audio: krijohet menjëherë dhe preload që muzika të jetë gati me klikimin e parë
   useEffect(() => {
@@ -51,11 +52,8 @@ const MusicPlayer = () => {
     audio.preload = "auto";
     audio.loop = true;
 
-    const onCanPlay = () => setAudioReady(true);
-    const onError = () => setAudioReady(false);
-
-    audio.addEventListener("canplaythrough", onCanPlay, { once: true });
-    audio.addEventListener("error", onError, { once: true });
+    audio.addEventListener("canplaythrough", () => {}, { once: true });
+    audio.addEventListener("error", () => {}, { once: true });
     audio.addEventListener("play", () => setIsPlaying(true));
     audio.addEventListener("pause", () => setIsPlaying(false));
 
@@ -64,8 +62,6 @@ const MusicPlayer = () => {
 
     audioRef.current = audio;
     return () => {
-      audio.removeEventListener("canplaythrough", onCanPlay);
-      audio.removeEventListener("error", onError);
       audio.pause();
       audio.src = "";
       audioRef.current = null;
@@ -105,7 +101,7 @@ const MusicPlayer = () => {
     else window.onYouTubeIframeAPIReady = initYT;
   }, []);
 
-  const startWithAudio = () => {
+  const startWithAudio = (): boolean => {
     const audio = audioRef.current;
     if (!audio) return false;
     try {
@@ -114,10 +110,15 @@ const MusicPlayer = () => {
       if (p && typeof p.then === "function") {
         p.then(() => {
           sourceRef.current = "audio";
-        }).catch(() => {});
-        return true;
+          setIsPlaying(true);
+        }).catch(() => {
+          playAttemptedRef.current = true;
+          startWithYouTube();
+        });
+      } else {
+        sourceRef.current = "audio";
+        setIsPlaying(true);
       }
-      sourceRef.current = "audio";
       return true;
     } catch {
       return false;
@@ -149,11 +150,48 @@ const MusicPlayer = () => {
       return;
     }
 
-    // Luaj: prefero audio nëse është gati (menjëherë), përndryshe YouTube
-    if (audioReady && audioRef.current && audioRef.current.readyState >= 2) {
+    // iOS/Safari: play() DUHET thirrur menjëherë nga gjesti – pa kusht audioReady
+    if (audioRef.current) {
       if (startWithAudio()) return;
     }
     startWithYouTube();
+  };
+
+  // iPhone/Safari: touch ndodh para click – luaj menjëherë me prekje (një klik)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isPlaying) return;
+    lastTouchTimeRef.current = Date.now();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.currentTime = START_TIME_SECONDS;
+      const p = audio.play();
+      if (p && typeof p.then === "function") {
+        p.then(() => {
+          sourceRef.current = "audio";
+          setIsPlaying(true);
+        }).catch(() => {
+          startWithYouTube();
+        });
+      } else {
+        sourceRef.current = "audio";
+        setIsPlaying(true);
+      }
+      return;
+    }
+    if (playerRef.current) {
+      playerRef.current.seekTo(START_TIME_SECONDS, true);
+      playerRef.current.playVideo();
+      sourceRef.current = "youtube";
+      setIsPlaying(true);
+    }
+  };
+
+  const handleClick = () => {
+    if (Date.now() - lastTouchTimeRef.current < 400) {
+      lastTouchTimeRef.current = 0;
+      return;
+    }
+    toggleMusic();
   };
 
   return (
@@ -180,7 +218,8 @@ const MusicPlayer = () => {
       </AnimatePresence>
 
       <motion.button
-        onClick={toggleMusic}
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-gold to-gold-soft shadow-lg flex items-center justify-center group hover:shadow-xl transition-shadow"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
